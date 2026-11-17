@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import api, { errMsg, money } from "../api";
 import Icon from "../components/Icon.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import QrScanner from "../components/QrScanner.jsx";
 import Receipt from "../components/Receipt.jsx";
 
 const REFRESH_MS = 5000;
@@ -28,6 +29,7 @@ export default function PaywaySimulator() {
   const [notice, setNotice] = useState("");
   const [confirming, setConfirming] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [scanBusy, setScanBusy] = useState(false);
   const [receiptId, setReceiptId] = useState(null);
   const [lastReceipt, setLastReceipt] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -88,14 +90,37 @@ export default function PaywaySimulator() {
     }
   };
 
+  const scan = async (code) => {
+    setScanBusy(true);
+    setError("");
+    setNotice("");
+    setReceiptId(null);
+    try {
+      const { data } = await api.post("/payway-simulator/scan", { code });
+      setConfirming(data);
+    } catch (e) {
+      setConfirming(null);
+      setError(errMsg(e));
+    } finally {
+      setScanBusy(false);
+    }
+  };
+
   const pendingTotal = rows.reduce((sum, row) => sum + Number(row.total || 0), 0);
+  const stage = receiptId ? 4 : confirming ? 2 : rows.length ? 1 : 0;
+  const steps = [
+    { title: "Payment request", note: "Your app creates the QR" },
+    { title: "Scan QR code", note: "Camera reads the POS screen" },
+    { title: "ABA Simulator", note: "Approve the test payment" },
+    { title: "Payment result", note: "POS marks the sale paid" },
+  ];
 
   return (
     <div className="page">
       <PageHeader
         eyebrow="Sandbox tools"
         title="ABA Simulator"
-        subtitle="Complete a pending ABA PayWay sandbox QR without the official ABA Simulator app."
+        subtitle="Scan the QR shown on checkout, approve the test payment, and the result returns to the POS."
         actions={
           <div className="row page-actions-row no-print">
             <button
@@ -109,6 +134,25 @@ export default function PaywaySimulator() {
           </div>
         }
       />
+
+      <ol className="payway-steps" aria-label="ABA test payment flow">
+        {steps.map((step, index) => (
+          <li
+            key={step.title}
+            className={
+              index < stage ? "done" : index === stage ? "active" : ""
+            }
+          >
+            <span className="payway-step-number">
+              {index < stage ? <Icon name="check" size={14} /> : index + 1}
+            </span>
+            <div>
+              <strong>{step.title}</strong>
+              <small>{step.note}</small>
+            </div>
+          </li>
+        ))}
+      </ol>
 
       <div className="alert warn">
         <Icon name="warning" size={18} />
@@ -151,6 +195,27 @@ export default function PaywaySimulator() {
         </div>
       )}
 
+      <div className="card simulator-scan-card">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Step 2 of 4</span>
+            <h3>Scan the QR code</h3>
+            <p className="small">
+              Open this page on a phone, then scan the QR on the checkout screen. On
+              iPhone, allow camera access when Safari asks.
+            </p>
+          </div>
+          <span className="pill info">Sandbox</span>
+        </div>
+        <QrScanner onScan={scan} disabled={scanBusy} />
+        {scanBusy && (
+          <div className="qr-wait">
+            <span className="spinner" />
+            <span>Looking up the payment request…</span>
+          </div>
+        )}
+      </div>
+
       <div className="simulator-summary">
         <div className="simulator-stat">
           <span>Pending test QRs</span>
@@ -170,10 +235,11 @@ export default function PaywaySimulator() {
         <div className="card simulator-confirm">
           <div className="section-head">
             <div>
-              <span className="eyebrow">Confirm simulated payment</span>
+              <span className="eyebrow">Step 3 of 4 · ABA Simulator</span>
               <h3>Approve {confirming.receipt_no}?</h3>
               <p className="small">
-                This will mark the sale paid and finish the normal receipt flow.
+                This creates the sandbox payment approval and finishes the normal
+                receipt flow.
               </p>
             </div>
             <span className="pill warn">Test only</span>
@@ -198,17 +264,27 @@ export default function PaywaySimulator() {
             </div>
           </div>
 
-          <div className="alert warn compact-alert">
-            <Icon name="warning" size={16} />
-            <span>No money will be collected. This is a sandbox test approval.</span>
-          </div>
+          {confirming.expired ? (
+            <div className="alert error compact-alert">
+              <Icon name="warning" size={16} />
+              <span>
+                This QR has expired. Ask the cashier to refresh the QR on the checkout
+                screen, then scan the new code.
+              </span>
+            </div>
+          ) : (
+            <div className="alert warn compact-alert">
+              <Icon name="warning" size={16} />
+              <span>No money will be collected. This is a sandbox test approval.</span>
+            </div>
+          )}
 
           <div className="row form-actions">
             <button
               className="primary"
               type="button"
               onClick={() => pay(confirming)}
-              disabled={busyId === confirming.sale_id}
+              disabled={busyId === confirming.sale_id || confirming.expired}
             >
               <Icon name="check" size={16} />
               {busyId === confirming.sale_id
@@ -221,11 +297,21 @@ export default function PaywaySimulator() {
               onClick={() => setConfirming(null)}
               disabled={busyId === confirming.sale_id}
             >
-              Cancel
+              Scan another
             </button>
           </div>
         </div>
       )}
+
+      <div className="section-head simulator-list-head">
+        <div>
+          <span className="eyebrow">Fallback</span>
+          <h3>Pending test QRs</h3>
+          <p className="small">
+            Use this list if the camera is unavailable, or pick a payment directly.
+          </p>
+        </div>
+      </div>
 
       <div className="table-wrap">
         <table className="table simulator-table">
@@ -282,6 +368,8 @@ export default function PaywaySimulator() {
                         onClick={() => {
                           setNotice("");
                           setError("");
+                          setNotice("");
+                          setReceiptId(null);
                           setConfirming(sale);
                         }}
                       >

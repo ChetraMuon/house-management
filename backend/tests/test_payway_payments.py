@@ -47,7 +47,11 @@ def _fake_gateway(monkeypatch, state="APPROVED", reference="654321"):
         return {
             "status": {"code": "0", "message": "Success"},
             "qrImage": "data:image/png;base64,ZmFrZS1xcg==",
-            "qrString": "000201010212",
+            # PayWay embeds the tran_id in the KHQR additional-data field.
+            "qrString": (
+                "00020101021230510016abaakhppxxx@abaa520459995303840540425.00"
+                f"5802KH5911Test Shop6307{kwargs['tran_id']}6304ABCD"
+            ),
             "abapay_deeplink": "abamobilebank://test",
         }
 
@@ -524,6 +528,56 @@ def test_payway_simulator_marks_pending_sandbox_sale_paid(monkeypatch):
         row["sale_id"] == sale_id
         for row in client.get("/api/payway-simulator/pending", headers=manager_headers).json()
     )
+
+
+def test_payway_simulator_scan_matches_pending_qr(monkeypatch):
+    _enable_simulator(monkeypatch)
+    calls = _fake_gateway(monkeypatch, state="PENDING")
+    emp_id, _, manager_id, _, sale_id = _seed_sale()
+
+    client = TestClient(app)
+    emp_headers = {"Authorization": f"Bearer {create_access_token(emp_id, 'emp')}"}
+    manager_headers = {"Authorization": f"Bearer {create_access_token(manager_id, 'manager')}"}
+
+    qr = client.post(f"/api/sales/{sale_id}/payway/qr", headers=emp_headers)
+    assert qr.status_code == 200, qr.text
+    payload = qr.json()
+    assert payload["qr_string"]
+
+    # A camera scanner posts the whole KHQR string.
+    scanned = client.post(
+        "/api/payway-simulator/scan",
+        json={"code": payload["qr_string"]},
+        headers=manager_headers,
+    )
+    assert scanned.status_code == 200, scanned.text
+    assert scanned.json()["sale_id"] == sale_id
+    assert scanned.json()["tran_id"] == calls["tran_id"]
+
+    # Typing the short reference printed under the QR also works.
+    typed = client.post(
+        "/api/payway-simulator/scan",
+        json={"code": calls["tran_id"]},
+        headers=manager_headers,
+    )
+    assert typed.status_code == 200, typed.text
+    assert typed.json()["sale_id"] == sale_id
+
+    # Employees may not use the scan endpoint.
+    denied = client.post(
+        "/api/payway-simulator/scan",
+        json={"code": payload["qr_string"]},
+        headers=emp_headers,
+    )
+    assert denied.status_code == 403
+
+    missing = client.post(
+        "/api/payway-simulator/scan",
+        json={"code": "000201010212not-a-real-sale"},
+        headers=manager_headers,
+    )
+    assert missing.status_code == 404
+    assert "No pending sandbox payment" in missing.json()["detail"]
 
 
 def test_payway_simulator_is_sandbox_only_and_can_be_disabled(monkeypatch):

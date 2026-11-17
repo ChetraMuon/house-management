@@ -128,13 +128,18 @@ export default function PaywayQr({ sale, onPaid, onPendingChange, sandbox = fals
 
       {status === "PENDING" && qr && (
         <>
+          <div className="qr-step-label">
+            <span className="eyebrow">Step 1 of 4</span>
+            <strong>Payment request created</strong>
+          </div>
+
           {(sandbox || qr.sandbox) && (
             <div className="alert warn compact-alert">
               <Icon name="warning" size={16} />
               <span>
-                Sandbox QR: the live ABA Mobile app cannot pay this. A manager can
-                complete the test payment from Operations → ABA Simulator. For real
-                payments, switch to production PayWay credentials.
+                Sandbox QR: the live ABA Mobile app cannot pay this. On a phone, open
+                Operations → ABA Simulator and scan this code, or let a manager pick it
+                from the pending list.
               </span>
             </div>
           )}
@@ -149,7 +154,9 @@ export default function PaywayQr({ sale, onPaid, onPendingChange, sandbox = fals
 
           <div className="qr-amount">{money(sale.total)}</div>
           <p className="small qr-hint">
-            Ask the customer to scan with ABA Mobile or any KHQR banking app.
+            {sandbox || qr.sandbox
+              ? "Manager: scan this code from Operations → ABA Simulator."
+              : "Ask the customer to scan with ABA Mobile or any KHQR banking app."}
           </p>
 
           <div className="qr-meta">

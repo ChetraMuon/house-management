@@ -50,15 +50,8 @@ def _simulator_row(sale: models.Sale, payment: models.Payment, now: datetime) ->
     }
 
 
-@router.get("/pending", response_model=list[schemas.PaywaySimulatorSaleOut],
-            summary="List pending sandbox PayWay QRs")
-def pending_sales(
-    db: Session = Depends(get_db),
-    _: models.User = Depends(management),
-):
-    _require_simulator()
-    now = datetime.now()
-    sales = db.scalars(
+def _pending_sales(db: Session) -> list[models.Sale]:
+    return list(db.scalars(
         select(models.Sale)
         .join(models.Payment, models.Payment.sale_id == models.Sale.id)
         .options(
@@ -73,8 +66,50 @@ def pending_sales(
         )
         .order_by(models.Sale.created_at.desc(), models.Sale.id.desc())
         .limit(100)
-    ).all()
-    return [_simulator_row(sale, sale.payment, now) for sale in sales]
+    ).all())
+
+
+@router.get("/pending", response_model=list[schemas.PaywaySimulatorSaleOut],
+            summary="List pending sandbox PayWay QRs")
+def pending_sales(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(management),
+):
+    _require_simulator()
+    now = datetime.now()
+    return [_simulator_row(sale, sale.payment, now) for sale in _pending_sales(db)]
+
+
+@router.post("/scan", response_model=schemas.PaywaySimulatorSaleOut,
+             summary="Find a pending sandbox QR by scanning it")
+def scan_pending(
+    data: schemas.PaywayScanIn,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(management),
+):
+    """Resolve a scanned KHQR (or a typed reference) to one pending test payment.
+
+    PayWay embeds our transaction ID in the KHQR additional-data field, so a
+    plain substring match is enough and avoids a QR-decoding dependency on the
+    server.
+    """
+    _require_simulator()
+    code = data.code.strip()
+    if not code:
+        raise HTTPException(400, "Scan a QR code or enter its reference.")
+    haystack = code.lower()
+    for sale in _pending_sales(db):
+        payment = sale.payment
+        tran_id = (payment.provider_txn_id or "").lower()
+        if tran_id and tran_id in haystack:
+            return _simulator_row(sale, payment, datetime.now())
+        if sale.receipt_no and sale.receipt_no.lower() in haystack:
+            return _simulator_row(sale, payment, datetime.now())
+    raise HTTPException(
+        404,
+        "No pending sandbox payment matches this QR. Refresh the QR on checkout "
+        "or make sure you scanned the QR shown on the POS screen.",
+    )
 
 
 @router.post("/{sale_id}/pay", response_model=schemas.PaywayStatusOut,

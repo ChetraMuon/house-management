@@ -241,18 +241,19 @@ Cash and manual card/transfer keep working exactly as before; PayWay is only ena
    works without a public webhook. In production, set it to the public HTTPS URL above.
 3. Restart the backend. In employee checkout, choosing **Transfer (ABA QR)** creates a dynamic QR;
    **Manual transfer** remains available for transfers recorded without PayWay.
-4. Scan the QR with ABA Mobile or any KHQR banking app. The sale flips to `PAID` as soon as the
-   backend verifies the payment with PayWay, and the receipt prints normally.
+4. In production, scan the QR with ABA Mobile or any KHQR banking app. The sale flips to
+   `PAID` as soon as the backend verifies the payment with PayWay, and the receipt prints normally.
 
 **Sandbox limitation:** a QR created with sandbox credentials cannot be paid by the production
-ABA Mobile app. Use the built-in **ABA Simulator** (below) or the official PayWay sandbox
-simulator app. To accept real customer payments, apply for production PayWay credentials, set
+ABA Mobile app. Use the built-in **ABA Simulator** scanner (below) or ABA's official
+**ABA Simulator** iOS app (TestFlight: <https://testflight.apple.com/join/HNyq7UCm>). To accept
+real customer payments, apply for production PayWay credentials, set
 `PAYWAY_BASE_URL=https://checkout.payway.com.kh`, and expose the webhook over public HTTPS.
 
 ### Built-in ABA sandbox simulator
 
-The app includes a web-based test payer so you can complete a sandbox QR without the official
-ABA Simulator mobile app. It is deliberately limited to sandbox mode:
+The app includes a web-based test payer so you can scan and complete a sandbox QR without ABA's
+official TestFlight app. It is deliberately limited to sandbox mode:
 
 - It only appears for **manager** and **admin** users under **Operations → ABA Simulator**.
 - It is only available when `PAYWAY_SIMULATOR_ENABLED=true` **and**
@@ -264,10 +265,15 @@ ABA Simulator mobile app. It is deliberately limited to sandbox mode:
 Usage:
 
 1. As an employee, create a sale and choose **Transfer (ABA QR)** on the checkout screen.
-2. As a manager or admin, open **Operations → ABA Simulator**.
-3. Select the pending receipt and click **Simulate payment**, then confirm.
-4. The sale becomes `PAID`, the employee checkout confirms automatically, and the normal receipt
-   can be printed.
+   The POS creates the PayWay payment request and displays the QR.
+2. As a manager or admin, open **Operations → ABA Simulator** on a phone (iPhone Safari works).
+3. Tap **Scan QR code**, allow camera access, and point the phone at the POS screen. The scanner
+   reads the KHQR and finds the matching pending payment request.
+4. Confirm **Approve test payment**. The sale becomes `PAID`, the checkout confirms automatically,
+   the Telegram alert is sent, and the receipt can be printed.
+
+If the camera is unavailable, type the short reference printed under the QR (for example
+`S94ad12f1d1`) or pick the receipt from the pending list.
 
 The simulator never trusts a browser-supplied amount or status: the backend loads the pending
 payment from the database, checks that it is still pending and unexpired, and reuses the normal

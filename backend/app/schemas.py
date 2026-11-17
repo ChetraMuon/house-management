@@ -302,6 +302,10 @@ class PaywaySimulatorSaleOut(BaseModel):
     expired: bool = False
 
 
+class PaywayScanIn(BaseModel):
+    code: str = Field(min_length=1, max_length=4000)
+
+
 class ApprovalDecision(BaseModel):
     note: str | None = Field(default=None, max_length=255)
 
