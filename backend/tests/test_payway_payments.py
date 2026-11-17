@@ -68,6 +68,11 @@ def _fake_gateway(monkeypatch, state="APPROVED", reference="654321"):
     monkeypatch.setattr(payway, "close_transaction", lambda tran_id: {"status": {"code": "00"}})
     monkeypatch.setattr("app.routers.sales.send_stock_notification", lambda *a, **k: True)
     monkeypatch.setattr("app.routers.sales.send_low_stock_notification", lambda *a, **k: True)
+    calls["paid_alerts"] = []
+    monkeypatch.setattr(
+        "app.routers.sales.send_sale_paid_notification",
+        lambda **kwargs: calls["paid_alerts"].append(kwargs) or True,
+    )
     return calls
 
 
@@ -169,6 +174,8 @@ def test_payway_qr_reserves_stock_and_status_confirms_sale(monkeypatch):
     assert body["sale_status"] == "PAID"
     assert body["sale"]["status"] == "PAID"
     assert calls["checked"] == qr["tran_id"]
+    assert len(calls["paid_alerts"]) == 1
+    assert calls["paid_alerts"][0]["payment_label"] == "ABA QR"
 
     with database.SessionLocal() as db:
         # The reservation is not deducted a second time on confirmation.
@@ -453,7 +460,7 @@ def _enable_simulator(monkeypatch):
 
 def test_payway_simulator_marks_pending_sandbox_sale_paid(monkeypatch):
     _enable_simulator(monkeypatch)
-    _fake_gateway(monkeypatch, state="PENDING")
+    calls = _fake_gateway(monkeypatch, state="PENDING")
     emp_id, other_id, manager_id, product_id, sale_id = _seed_sale()
 
     client = TestClient(app)
@@ -510,6 +517,8 @@ def test_payway_simulator_marks_pending_sandbox_sale_paid(monkeypatch):
     again = client.post(f"/api/payway-simulator/{sale_id}/pay", headers=manager_headers)
     assert again.status_code == 200
     assert again.json()["status"] == "SUCCEEDED"
+    assert len(calls["paid_alerts"]) == 1
+    assert calls["paid_alerts"][0]["payment_label"] == "ABA QR"
 
     assert not any(
         row["sale_id"] == sale_id

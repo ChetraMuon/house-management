@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime
 from uuid import uuid4
 from unittest.mock import Mock, patch
 
@@ -15,9 +16,11 @@ from app.models import Base
 from app.telegram import (
     build_approval_message,
     build_low_stock_message,
+    build_sale_paid_message,
     build_stock_message,
     send_approval_notification,
     send_low_stock_notification,
+    send_sale_paid_notification,
     send_stock_notification,
 )
 from app.routers.products import delete_product, update_product
@@ -73,6 +76,32 @@ def test_build_stock_message_includes_details():
     assert "12" in text
     assert "manager" in text
     assert "45" in text
+
+
+def test_build_sale_paid_message_includes_details():
+    text = build_sale_paid_message(
+        "R20260101-000001",
+        75.5,
+        "ABA QR",
+        "Cashier One",
+        "Alice",
+        "0991234567",
+        datetime(2026, 1, 1, 9, 30),
+    )
+    assert "SALE PAID" in text.upper()
+    assert "R20260101-000001" in text
+    assert "75.50" in text
+    assert "ABA QR" in text
+    assert "Cashier One" in text
+    assert "Alice" in text
+    assert "0991234567" in text
+    assert "2026-01-01 09:30" in text
+
+
+def test_build_sale_paid_message_without_customer():
+    text = build_sale_paid_message("R1-000002", 10, "Cash", "Cashier One")
+    assert "Customer:" not in text
+    assert "Phone:" not in text
 
 
 def test_update_product_and_delete_unused_product():
@@ -249,15 +278,48 @@ def test_checkout_sends_stock_out_notification_for_sale():
         db.commit()
 
         with patch("app.routers.sales.send_stock_notification") as mock_stock, \
-             patch("app.routers.sales.send_low_stock_notification") as mock_low:
+             patch("app.routers.sales.send_low_stock_notification") as mock_low, \
+             patch("app.routers.sales.send_sale_paid_notification") as mock_paid:
             checkout(sale.id, schemas.CheckoutIn(method="CASH", amount_received=Decimal("75.00")), db=db, user=cashier)
 
         assert mock_stock.call_count >= 1
         assert mock_stock.call_args[0][0] == "OUT"
         assert mock_low.call_count >= 1
+        mock_paid.assert_called_once()
+        paid = mock_paid.call_args.kwargs
+        assert paid["receipt_no"] == sale.receipt_no
+        assert paid["payment_label"] == "Cash"
+        assert paid["cashier_name"] == "Cashier"
+        assert paid["customer_name"] == "Alice"
     finally:
         db.rollback()
         db.close()
+
+
+def test_send_sale_paid_notification_uses_telegram_api():
+    with patch.object(telegram.settings, "TELEGRAM_BOT_TOKEN", "abc123"), \
+         patch.object(telegram.settings, "TELEGRAM_CHAT_ID", "-100999"), \
+         patch("app.telegram.urlopen") as mock_urlopen:
+        mock_response = Mock()
+        mock_response.read.return_value = b"{\"ok\": true}"
+        mock_response.__enter__ = Mock(return_value=mock_response)
+        mock_response.__exit__ = Mock(return_value=None)
+        mock_urlopen.return_value = mock_response
+
+        result = send_sale_paid_notification(
+            "R20260101-000001",
+            75,
+            "ABA QR",
+            "Cashier One",
+            customer_name="Alice",
+        )
+
+        assert result is True
+        mock_urlopen.assert_called_once()
+        payload = mock_urlopen.call_args.args[0].data.decode("utf-8")
+        assert "SALE PAID" in payload
+        assert "R20260101-000001" in payload
+        assert "ABA QR" in payload
 
 
 def test_send_stock_notification_uses_telegram_api():

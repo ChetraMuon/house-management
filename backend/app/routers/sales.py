@@ -24,7 +24,11 @@ from ..config import settings as app_settings
 from ..database import get_db
 from ..deps import get_current_user, require_roles
 from ..money import calculate_change, change_breakdown, q
-from ..telegram import send_low_stock_notification, send_stock_notification
+from ..telegram import (
+    send_low_stock_notification,
+    send_sale_paid_notification,
+    send_stock_notification,
+)
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 emp_only = require_roles("emp")
@@ -176,6 +180,32 @@ def _safe_close_payway(tran_id: str | None) -> None:
         pass
 
 
+PAYMENT_LABELS = {"CASH": "Cash", "CARD": "Card", "TRANSFER": "Transfer"}
+
+
+def _notify_sale_paid(sale: models.Sale, user: models.User, payment_label: str) -> None:
+    """Send a Telegram alert after the sale is committed as PAID.
+
+    Telegram failures never break a completed sale: the helper swallows
+    network errors and simply returns False.
+    """
+    cashier = sale.cashier
+    cashier_name = (
+        (cashier.full_name or cashier.username)
+        if cashier
+        else (user.full_name or user.username)
+    )
+    send_sale_paid_notification(
+        receipt_no=sale.receipt_no,
+        total=sale.total,
+        payment_label=payment_label,
+        cashier_name=cashier_name,
+        customer_name=sale.customer_name,
+        customer_phone=sale.customer_phone,
+        paid_at=sale.paid_at,
+    )
+
+
 def _qr_response(sale: models.Sale, payment: models.Payment) -> dict:
     result: dict = {}
     if payment.raw_response:
@@ -234,6 +264,7 @@ def _finalize_payway_sale(
     sale.status = "PAID"
     sale.paid_at = datetime.now()
     db.commit()
+    _notify_sale_paid(sale, user, "ABA QR")
 
 
 def _sync_payway_payment(
@@ -419,6 +450,7 @@ def checkout(sale_id: int, data: schemas.CheckoutIn, db: Session = Depends(get_d
     sale.status = "PAID"
     sale.paid_at = datetime.now()
     db.commit()
+    _notify_sale_paid(sale, user, PAYMENT_LABELS.get(data.method, data.method.title()))
     return _load_sale(db, sale.id, user)
 
 

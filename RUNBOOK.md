@@ -6,6 +6,17 @@ The whole app is **one process**: FastAPI serves both the API and the built Reac
 port **8000**. The database is SQLite (`backend/house_management.db`) and product images live in
 `backend/uploads/products`.
 
+## Live addresses
+
+| Purpose | Address |
+|---|---|
+| **Shop (Vercel, recommended)** | **https://house-management-tau.vercel.app** |
+| Backend + standalone site (Railway) | https://house-management-production.up.railway.app |
+| Local | http://127.0.0.1:8000 |
+
+The Vercel site serves the React app and forwards `/api` and `/uploads` to Railway. Railway holds
+the database and images on the `/data` volume, so data survives redeploys.
+
 ---
 
 ## 1. Run it locally (one command)
@@ -165,6 +176,22 @@ PAYWAY_QR_LIFETIME_MINUTES=10
 
 Then `railway redeploy -y`. Use **sandbox** credentials and
 `https://checkout-sandbox.payway.com.kh` until PayWay gives you production keys.
+
+### Telegram alerts (optional)
+
+The app sends Telegram messages for stock IN/OUT, low stock, approval decisions, and every
+paid sale (cash, card, transfer, ABA QR). Create a bot with **@BotFather**, then get your chat
+ID (send the bot a message, open
+`https://api.telegram.org/bot<token>/getUpdates`, and read `message.chat.id`).
+
+```powershell
+railway variable set TELEGRAM_BOT_TOKEN=<bot-token> --skip-deploys
+railway variable set TELEGRAM_CHAT_ID=<chat-id> --skip-deploys
+railway up -y
+```
+
+Each sale triggers exactly one message, after the payment is committed. Failed Telegram
+requests never block a sale.
 
 ---
 

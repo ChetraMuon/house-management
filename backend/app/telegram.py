@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from urllib.request import Request, urlopen
 
 from .config import settings
@@ -76,6 +77,52 @@ def build_approval_message(decision: str, receipt_no: str, total: int | float, a
     if note:
         lines.append(f"Note: {note}")
     return "\n".join(lines)
+
+
+def build_sale_paid_message(
+    receipt_no: str,
+    total: int | float,
+    payment_label: str,
+    cashier_name: str,
+    customer_name: str | None = None,
+    customer_phone: str | None = None,
+    paid_at: datetime | None = None,
+) -> str:
+    lines = [
+        "💰 SALE PAID",
+        f"Receipt: {receipt_no}",
+        f"Total: ${float(total):.2f}",
+        f"Payment: {payment_label}",
+        f"Cashier: {cashier_name}",
+    ]
+    if customer_name:
+        lines.append(f"Customer: {customer_name}")
+    if customer_phone:
+        lines.append(f"Phone: {customer_phone}")
+    lines.append(f"Time: {(paid_at or datetime.now()).strftime('%Y-%m-%d %H:%M')}")
+    return "\n".join(lines)
+
+
+def send_sale_paid_notification(
+    receipt_no: str,
+    total: int | float,
+    payment_label: str,
+    cashier_name: str,
+    customer_name: str | None = None,
+    customer_phone: str | None = None,
+    paid_at: datetime | None = None,
+) -> bool:
+    return _send_telegram_message(
+        build_sale_paid_message(
+            receipt_no,
+            total,
+            payment_label,
+            cashier_name,
+            customer_name,
+            customer_phone,
+            paid_at,
+        )
+    )
 
 
 def send_stock_notification(
