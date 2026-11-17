@@ -1,0 +1,50 @@
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: house_mgmt
+      MYSQL_USER: hms_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-hms_pass}
+    ports: ["127.0.0.1:3306:3306"]
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: mysql+pymysql://hms_user:${MYSQL_PASSWORD:-hms_pass}@db:3306/house_mgmt
+      SECRET_KEY: ${SECRET_KEY:-change-this-to-a-long-random-string}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      SEED_MANAGER_USERNAME: ${SEED_MANAGER_USERNAME:-manager}
+      SEED_MANAGER_PASSWORD: ${SEED_MANAGER_PASSWORD:-ChangeMe123!}
+      PAYWAY_ENABLED: ${PAYWAY_ENABLED:-false}
+      PAYWAY_MERCHANT_ID: ${PAYWAY_MERCHANT_ID:-}
+      PAYWAY_API_KEY: ${PAYWAY_API_KEY:-}
+      PAYWAY_BASE_URL: ${PAYWAY_BASE_URL:-https://checkout-sandbox.payway.com.kh}
+      PAYWAY_CALLBACK_URL: ${PAYWAY_CALLBACK_URL:-}
+      PAYWAY_QR_LIFETIME_MINUTES: ${PAYWAY_QR_LIFETIME_MINUTES:-30}
+      PAYWAY_CURRENCY: ${PAYWAY_CURRENCY:-USD}
+    depends_on:
+      db: { condition: service_healthy }
+    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - product_uploads:/srv/uploads/products
+    command: sh -c "python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:80"]
+    depends_on: [backend]
+    restart: unless-stopped
+
+volumes:
+  dbdata:
+  product_uploads:
