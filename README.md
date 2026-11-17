@@ -268,12 +268,15 @@ Usage:
    The POS creates the PayWay payment request and displays the QR.
 2. As a manager or admin, open **Operations → ABA Simulator** on a phone (iPhone Safari works).
 3. Tap **Scan QR code**, allow camera access, and point the phone at the POS screen. The scanner
-   reads the KHQR and finds the matching pending payment request.
+   reads the KHQR (including PayWay's styled QR with a centre logo) and finds the matching pending
+   payment request.
 4. Confirm **Approve test payment**. The sale becomes `PAID`, the checkout confirms automatically,
    the Telegram alert is sent, and the receipt can be printed.
 
-If the camera is unavailable, type the short reference printed under the QR (for example
-`S94ad12f1d1`) or pick the receipt from the pending list.
+If Safari says the camera permission was denied, check **Settings → Safari → Camera → Allow** and
+reload the page, or open the site directly in Safari/Chrome instead of an in-app browser. You can
+also tap **Upload QR photo** (take a photo of the POS screen first), type the short reference
+printed under the QR (for example `S94ad12f1d1`), or pick the receipt from the pending list.
 
 The simulator never trusts a browser-supplied amount or status: the backend loads the pending
 payment from the database, checks that it is still pending and unexpired, and reuses the normal
