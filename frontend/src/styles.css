@@ -1500,7 +1500,8 @@ input[type="date"] { min-height: 38px; }
   pointer-events: none;
 }
 .qr-canvas { display: none; }
-.qr-scanner-actions { justify-content: center; }
+.qr-file-input { display: none; }
+.qr-scanner-actions { flex-wrap: wrap; justify-content: center; }
 .qr-manual {
   display: flex;
   flex-direction: column;

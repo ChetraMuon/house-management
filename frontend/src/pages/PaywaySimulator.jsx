@@ -202,7 +202,8 @@ export default function PaywaySimulator() {
             <h3>Scan the QR code</h3>
             <p className="small">
               Open this page on a phone, then scan the QR on the checkout screen. On
-              iPhone, allow camera access when Safari asks.
+              iPhone, allow camera access when Safari asks. If the camera is blocked,
+              upload a photo or type the reference.
             </p>
           </div>
           <span className="pill info">Sandbox</span>
